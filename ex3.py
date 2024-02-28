@@ -5,12 +5,15 @@ Danielle Hodaya Shrem 208150433
 import math
 import sys
 from collections import Counter
-#import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 import numpy as np
 K=10
 num_clusters = 9
 v_size = 6800
 epsilon = 0.0001
+max_iterations = 100
+threshold = 0.0001
+
 class article:
     def __init__(self, id,lines, words,topic):
         self.id = id
@@ -116,7 +119,7 @@ def m_step(articles, Wti, vocabulary, lambda_=0.1):
     Ntk={}
     Nt = {}
     for i,article in enumerate(articles):
-        Ntk[article.id] = article.words
+        Ntk[article.id-1] = article.words
         Nt[i] = article.count_words
     #clac alphas:
     alphas = []
@@ -126,9 +129,9 @@ def m_step(articles, Wti, vocabulary, lambda_=0.1):
             alpha=epsilon
         alphas.append(alpha)
     #normlize the alphas:
-    sum=sum(alphas)
+    sumalpha=sum(alphas)
     for i in range(num_clusters):
-        alphas[i]/=sum
+        alphas[i]/=sumalpha
     #clac Pik:
     Pik={}
     for i in range(num_clusters):
@@ -145,11 +148,55 @@ def m_step(articles, Wti, vocabulary, lambda_=0.1):
             Pk[word] = (numerator+lambda_)/(denominator + len(vocabulary) * lambda_)
         Pik[i]=Pk
 
-        return alphas, Pik
+    return alphas, Pik, Ntk
 
+def e_step(alphas,pik,ntk,wti,articles):
+    #prevent underflow with log:
+    Zti = {}
+    for t in ntk.keys():
+        zi = []
+        for i in range(num_clusters):
+            value = math.log(alphas[i])
+            for k in ntk[t].keys():
+                value += ntk[t][k] * math.log(pik[i][k])
+            zi.append(value)
+        Zti[t] = zi
+        m = max(zi)
+        denominator = 0.0
+        for i in range(num_clusters):
+            if zi[i] - m >= -K:
+                denominator += math.exp(zi[i] - m)
+        for i in range(num_clusters):
+            if zi[i] - m < -K:
+                wti[t][i] = 0.0
+            else:
+                numerator = math.exp(zi[i] - m)
+                wti[t][i] = numerator / denominator
+        articles[t].set_probtobeincluster(wti[t])
+    return wti ,Zti
 
+def likelihood(Zti):
+    lan = 0
+    for t in Zti.keys():
+        m = max(Zti[t])
+        lan += m
+        sum = 0
+        for z in Zti[t]:
+            if z - m >= -K:
+                sum += math.exp(z - m)
+        lan += math.log(sum)
+    return lan
 
-
+def perplexity(articles, ntk, pik, lamda, words):
+    perplexity = 0
+    for t in articles:
+        prob = 0
+        cluster=t.get_cluster()
+        for k in ntk[t.id-1]:
+            prob_for_cluster = (pik[cluster][k]* t.count_words+lamda)/ (t.count_words + len(words) * lamda)
+            prob += math.log(prob_for_cluster)*ntk[t.id-1][k]
+        perplexity += math.exp(-prob / t.count_words)
+    return perplexity / len(articles)
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
@@ -160,8 +207,55 @@ if __name__ == "__main__":
     words = filter_rare_words(events)
     articles=create_articles(develop_file,words)
     wti=init_wti(articles)
-    for i in range(10):
+    likelihoods_per_iter = []
+    perplexities_per_iter = []
+    for i in range(max_iterations):
         accuracy,clusterS,clustersMap = acc(articles,words)
         #maximization step:
-        alphas, Pik = m_step(articles, wti, words)
+        alphas, Pik,ntk = m_step(articles, wti, words)
+        #expectation step:
+        wti, Zti = e_step(alphas, Pik, ntk, wti,articles)
+        # Calculate and append current likelihood to the list
+        current_likelihood = likelihood(Zti)
+        likelihoods_per_iter.append(current_likelihood)
+        perplexities_per_iter.append(perplexity(articles, ntk, Pik, 0.1, words))
+        if i > 0:
+            # Calculate the relative change in likelihood
+            previous_likelihood = likelihoods_per_iter[-2]
+            relative_change = (current_likelihood - previous_likelihood) / abs(previous_likelihood)
+            if relative_change < 0:
+            #raise execption because the algorithem should increase the likelihood:
+                raise ValueError("Likelihood decreased. Stopping.")
+
+            # Check if the relative change is below the threshold
+            if relative_change < threshold:
+                print(f"Algorithm converged at iteration {i} with relative change {relative_change:.4f}. Stopping.")
+                break
+
+        print(f"Iteration {i}, Likelihood: {current_likelihood}, perplexity: {perplexities_per_iter[-1]}")
+        # Assuming likelihoods_per_iter and perplexities_per_iter are lists containing the values over iterations
+
+    # Assuming likelihoods_per_iter and perplexities_per_iter are lists containing the values over iterations
+    plt.figure(figsize=(12, 6))
+
+    plt.subplot(1, 2, 1)
+    plt.plot(likelihoods_per_iter, marker='o')
+    plt.title('Log Likelihood over Iterations')
+    plt.xlabel('Iteration')
+    plt.ylabel('Log Likelihood')
+
+    plt.subplot(1, 2, 2)
+    plt.plot(perplexities_per_iter, marker='o', color='red')
+    plt.title('Perplexity over Iterations')
+    plt.xlabel('Iteration')
+    plt.ylabel('Perplexity')
+
+    plt.tight_layout()
+    plt.show()
+
+
+
+
+
+
 
