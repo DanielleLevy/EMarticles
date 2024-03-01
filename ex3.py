@@ -7,6 +7,7 @@ import sys
 from collections import Counter
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 K=10
 num_clusters = 9
 v_size = 6800
@@ -39,6 +40,16 @@ def read_file(file_name):
             line=lines[i].split()
             events = events+line[:-1]
     return events
+
+def read_topics(file_name):
+    topics=[]
+    with open(file_name, "r") as file:
+        lines = file.readlines()
+        for i in range(0,len(lines),2):
+            topic=lines[i].strip()
+            topics.append(topic)
+    return topics
+
 
 def filter_rare_words(events):
     counter = Counter(events)
@@ -251,7 +262,32 @@ if __name__ == "__main__":
     plt.ylabel('Perplexity')
 
     plt.tight_layout()
+
+    topics=read_topics(topics_file)
+
+    rows = []
+    for cluster in range(num_clusters):
+        row = {}
+        row['cluster']=cluster+1
+        # Create a dictionary for the current row
+        for topic in topics:
+            row[topic] = clustersMap[cluster].get(topic, 0)
+        row['size'] = clusterS[cluster]
+        # Add the row dictionary to the list
+        rows.append(row)
+
+    # Create the DataFrame from the list of rows
+    confusion_matrix = pd.DataFrame(rows)
+
+    # Sort the DataFrame based on Cluster Size in descending order
+    confusion_matrix = confusion_matrix.sort_values(by='size', ascending=False).reset_index(drop=True)
+
+    # Save the DataFrame to a CSV file
+    confusion_matrix.to_csv("confusion_matrix.csv")
+
     plt.show()
+
+
 
 
 
