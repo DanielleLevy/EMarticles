@@ -112,7 +112,7 @@ def acc(articles,words):
     correct = 0
     acc=0
     for i in range(num_clusters):
-        correct += clustersMap[i][dominantTopic[i]]
+        correct = clustersMap[i][dominantTopic[i]]
         acc+=correct/len(clusterArts[i])
     return acc/num_clusters,clusterS,clustersMap
 def init_wti(articles):
@@ -121,7 +121,7 @@ def init_wti(articles):
     for i,article in enumerate(articles):
         Wti[i] = article.probtobeincluster
     return Wti
-def m_step(articles, Wti, vocabulary, lambda_=0.1):
+def m_step(articles, Wti, vocabulary, lamda):
     # articles: List of article representations
     # Wti: Responsibility matrix
     # vocabulary: List of words in the corpus
@@ -156,7 +156,7 @@ def m_step(articles, Wti, vocabulary, lambda_=0.1):
             for t in range(len(Wti)):
                 if word in Ntk[t]:
                     numerator += Ntk[t][word] * Wti[t][i]
-            Pk[word] = (numerator+lambda_)/(denominator + len(vocabulary) * lambda_)
+            Pk[word] = (numerator+lamda)/(denominator + len(vocabulary) * lamda)
         Pik[i]=Pk
 
     return alphas, Pik, Ntk
@@ -208,34 +208,30 @@ def perplexity(articles, ntk, pik, lamda, words):
             prob += math.log(prob_for_cluster)*ntk[t.id-1][k]
         perplexity += math.exp(-prob / t.count_words)
     return perplexity / len(articles)
-
-if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        print("Usage: python ex3.py <develop.txt> <topics.txt>")
-        sys.exit(1)
-    develop_file, topics_file = sys.argv[1:3]
-    events=read_file(develop_file)
+def main(develop_file,topics_file,lamda):
+    events = read_file(develop_file)
     words = filter_rare_words(events)
-    articles=create_articles(develop_file,words)
-    wti=init_wti(articles)
+    articles = create_articles(develop_file, words)
+    wti = init_wti(articles)
     likelihoods_per_iter = []
     perplexities_per_iter = []
+    # Create lists to store results for each lambda value
     for i in range(max_iterations):
-        accuracy,clusterS,clustersMap = acc(articles,words)
-        #maximization step:
-        alphas, Pik,ntk = m_step(articles, wti, words)
-        #expectation step:
-        wti, Zti = e_step(alphas, Pik, ntk, wti,articles)
+        accuracy, clusterS, clustersMap = acc(articles, words)
+        # maximization step:
+        alphas, Pik, ntk = m_step(articles, wti, words,lamda)
+        # expectation step:
+        wti, Zti = e_step(alphas, Pik, ntk, wti, articles)
         # Calculate and append current likelihood to the list
         current_likelihood = likelihood(Zti)
         likelihoods_per_iter.append(current_likelihood)
-        perplexities_per_iter.append(perplexity(articles, ntk, Pik, 0.1, words))
+        perplexities_per_iter.append(perplexity(articles, ntk, Pik, lamda, words))
         if i > 0:
             # Calculate the relative change in likelihood
             previous_likelihood = likelihoods_per_iter[-2]
             relative_change = (current_likelihood - previous_likelihood) / abs(previous_likelihood)
             if relative_change < 0:
-            #raise execption because the algorithem should increase the likelihood:
+                # raise execption because the algorithem should increase the likelihood:
                 raise ValueError("Likelihood decreased. Stopping.")
 
             # Check if the relative change is below the threshold
@@ -245,10 +241,7 @@ if __name__ == "__main__":
 
         print(f"Iteration {i}, Likelihood: {current_likelihood}, perplexity: {perplexities_per_iter[-1]}")
         # Assuming likelihoods_per_iter and perplexities_per_iter are lists containing the values over iterations
-
-    # Assuming likelihoods_per_iter and perplexities_per_iter are lists containing the values over iterations
     plt.figure(figsize=(12, 6))
-
     plt.subplot(1, 2, 1)
     plt.plot(likelihoods_per_iter, marker='o')
     plt.title('Log Likelihood over Iterations')
@@ -263,12 +256,12 @@ if __name__ == "__main__":
 
     plt.tight_layout()
 
-    topics=read_topics(topics_file)
+    topics = read_topics(topics_file)
 
     rows = []
     for cluster in range(num_clusters):
         row = {}
-        row['cluster']=cluster+1
+        row['cluster'] = cluster + 1
         # Create a dictionary for the current row
         for topic in topics:
             row[topic] = clustersMap[cluster].get(topic, 0)
@@ -288,6 +281,38 @@ if __name__ == "__main__":
     plt.show()
 
 
+    return accuracy
+
+if __name__ == "__main__":
+    if len(sys.argv) != 3:
+        print("Usage: python ex3.py <develop.txt> <topics.txt>")
+        sys.exit(1)
+    develop_file, topics_file = sys.argv[1:3]
+    lamdas = [float(i) / 100 for i in range(2, 11, 2)]
+    accuracies = []
+    for lamda in lamdas:
+        accuracy = main(develop_file, topics_file, lamda)
+        accuracies.append(accuracy)
+    # Find the index of the maximum accuracy
+    best_accuracy_index = accuracies.index(max(accuracies))
+    best_lambda = lamdas[best_accuracy_index]
+    best_accuracy = accuracies[best_accuracy_index]
+
+    # Print the best lambda value and accuracy achieved
+    print(f"The best lambda value is: {best_lambda} with the best accuracy: {best_accuracy}")
+    print(lamdas)
+    print(accuracies)
+
+    # Plotting the accuracies with respect to lambda values
+    plt.figure(figsize=(8, 6))
+    plt.plot(lamdas, accuracies, marker='o')
+    plt.title('Accuracy vs. Lambda')
+    plt.xlabel('Lambda')
+    plt.ylabel('Accuracy')
+    plt.xticks(lamdas)
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
 
 
 
