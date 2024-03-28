@@ -20,8 +20,6 @@ This project is designed to perform clustering on a dataset of articles, visuali
 ## Usage
 
 To run the clustering analysis:
-
-```bash
 python ex3.py <develop.txt> <topics.txt>
 This will execute the clustering algorithm on the dataset provided in develop.txt and use the topics from topics.txt for labeling.
 
